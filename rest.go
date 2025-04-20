@@ -12,6 +12,7 @@ type info struct {
 	Code    string `json:"code"`
 	City    string `json:"city"`
 	ISP     string `json:"isp"`
+	ISPCode uint   `json:"isp_code"`
 }
 
 func (a *App) getClientInfo(w http.ResponseWriter, r *http.Request) {
@@ -32,6 +33,7 @@ func (a *App) getClientInfo(w http.ResponseWriter, r *http.Request) {
 	asnRecord, err := a.ASN.ASN(net.ParseIP(i.IP))
 	if err == nil {
 		i.ISP = asnRecord.AutonomousSystemOrganization
+		i.ISPCode = asnRecord.AutonomousSystemNumber
 	}
 
 	respondWithJSON(w, http.StatusOK, i)
