@@ -7,12 +7,12 @@ import (
 )
 
 type info struct {
-	IP string                 `json:"ip"`
-	Country string 			  `json:"country"`
-	Code string 			  `json:"code"`
-	City string 			  `json:"city"`
+	IP      string `json:"ip"`
+	Country string `json:"country"`
+	Code    string `json:"code"`
+	City    string `json:"city"`
+	ISP     string `json:"isp"`
 }
-
 
 func (a *App) getClientInfo(w http.ResponseWriter, r *http.Request) {
 
@@ -28,6 +28,11 @@ func (a *App) getClientInfo(w http.ResponseWriter, r *http.Request) {
 	i.Country = record.Country.Names["en"]
 	i.Code = record.Country.IsoCode
 	i.City = record.City.Names["en"]
+
+	asnRecord, err := a.ASN.ASN(net.ParseIP(i.IP))
+	if err == nil {
+		i.ISP = asnRecord.AutonomousSystemOrganization
+	}
 
 	respondWithJSON(w, http.StatusOK, i)
 }

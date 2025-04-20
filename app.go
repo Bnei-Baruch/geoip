@@ -2,16 +2,18 @@ package main
 
 import (
 	"encoding/json"
+	"log"
+	"net/http"
+
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/oschwald/geoip2-golang"
-	"log"
-	"net/http"
 )
 
 type App struct {
 	Router *mux.Router
 	Geoip  *geoip2.Reader
+	ASN    *geoip2.Reader
 }
 
 func (a *App) Initialize() {
@@ -26,6 +28,12 @@ func (a *App) InitGeoIP() {
 		log.Fatal(err)
 	}
 	a.Geoip = db
+
+	asnDb, err := geoip2.Open("GeoLite2-ASN.mmdb")
+	if err != nil {
+		log.Fatal(err)
+	}
+	a.ASN = asnDb
 }
 
 func (a *App) Run(port string) {
