@@ -2,9 +2,74 @@ package main
 
 import (
 	"net"
-	"net/http"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
+
+var privateIPBlocks []*net.IPNet
+
+func init() {
+	for _, cidr := range []string{
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"127.0.0.0/8",
+		"169.254.0.0/16",
+		"::1/128",
+		"fc00::/7",
+		"fe80::/10",
+		"::/128",
+		"ff00::/8",
+	} {
+		_, block, err := net.ParseCIDR(cidr)
+		if err == nil {
+			privateIPBlocks = append(privateIPBlocks, block)
+		}
+	}
+}
+
+func isPublicIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() || ip.IsUnspecified() {
+		return false
+	}
+	for _, block := range privateIPBlocks {
+		if block.Contains(ip) {
+			return false
+		}
+	}
+	return true
+}
+
+func getExternalIP(c *gin.Context) string {
+	// Prefer original client from X-Forwarded-For (left-most public IP)
+	if xff := strings.TrimSpace(c.GetHeader("X-Forwarded-For")); xff != "" {
+		parts := strings.Split(xff, ",")
+		for _, p := range parts {
+			candidate := net.ParseIP(strings.TrimSpace(p))
+			if isPublicIP(candidate) {
+				return candidate.String()
+			}
+		}
+	}
+	// Next, X-Real-Ip if public
+	if xri := strings.TrimSpace(c.GetHeader("X-Real-Ip")); xri != "" {
+		if ip := net.ParseIP(xri); isPublicIP(ip) {
+			return ip.String()
+		}
+	}
+	// Fallback to ClientIP (may be proxy if headers absent)
+	if ip := net.ParseIP(c.ClientIP()); ip != nil {
+		if isPublicIP(ip) {
+			return ip.String()
+		}
+		return ip.String()
+	}
+	return c.ClientIP()
+}
 
 type info struct {
 	IP      string `json:"ip"`
@@ -15,24 +80,23 @@ type info struct {
 	ISPCode uint   `json:"isp_code"`
 }
 
-func (a *App) getClientInfo(w http.ResponseWriter, r *http.Request) {
-
+func (a *App) getClientInfo(c *gin.Context) {
 	var i info
 
 	// optional query param ?ip=1.2.3.4; fallback to client's IP
-	ipParam := strings.TrimSpace(r.URL.Query().Get("ip"))
+	ipParam := strings.TrimSpace(c.Query("ip"))
 	if ipParam != "" {
 		if net.ParseIP(ipParam) == nil {
-			respondWithError(w, http.StatusBadRequest, "invalid ip")
+			c.JSON(400, gin.H{"status": "invalid ip"})
 			return
 		}
 		i.IP = ipParam
 	} else {
-		i.IP = getRealIP(r)
+		i.IP = getExternalIP(c)
 	}
 	record, err := a.Geoip.City(net.ParseIP(i.IP))
 	if err != nil {
-		respondWithError(w, http.StatusNotFound, "GeoIP not found")
+		c.JSON(404, gin.H{"status": "GeoIP not found"})
 		return
 	}
 
@@ -46,30 +110,5 @@ func (a *App) getClientInfo(w http.ResponseWriter, r *http.Request) {
 		i.ISPCode = asnRecord.AutonomousSystemNumber
 	}
 
-	respondWithJSON(w, http.StatusOK, i)
-}
-
-func getRealIP(r *http.Request) string {
-
-	remoteIP := ""
-	// the default is the originating ip. but we try to find better options because this is almost
-	// never the right IP
-	if parts := strings.Split(r.RemoteAddr, ":"); len(parts) == 2 {
-		remoteIP = parts[0]
-	}
-	// If we have a forwarded-for header, take the address from there
-	if xff := strings.Trim(r.Header.Get("X-Forwarded-For"), ","); len(xff) > 0 {
-		addrs := strings.Split(xff, ",")
-		lastFwd := addrs[len(addrs)-1]
-		if ip := net.ParseIP(lastFwd); ip != nil {
-			remoteIP = ip.String()
-		}
-		// parse X-Real-Ip header
-	} else if xri := r.Header.Get("X-Real-Ip"); len(xri) > 0 {
-		if ip := net.ParseIP(xri); ip != nil {
-			remoteIP = ip.String()
-		}
-	}
-
-	return remoteIP
+	c.JSON(200, i)
 }
