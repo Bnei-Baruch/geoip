@@ -19,7 +19,17 @@ func (a *App) getClientInfo(w http.ResponseWriter, r *http.Request) {
 
 	var i info
 
-	i.IP = getRealIP(r)
+	// optional query param ?ip=1.2.3.4; fallback to client's IP
+	ipParam := strings.TrimSpace(r.URL.Query().Get("ip"))
+	if ipParam != "" {
+		if net.ParseIP(ipParam) == nil {
+			respondWithError(w, http.StatusBadRequest, "invalid ip")
+			return
+		}
+		i.IP = ipParam
+	} else {
+		i.IP = getRealIP(r)
+	}
 	record, err := a.Geoip.City(net.ParseIP(i.IP))
 	if err != nil {
 		respondWithError(w, http.StatusNotFound, "GeoIP not found")
