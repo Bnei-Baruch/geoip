@@ -39,13 +39,13 @@ func corsMiddleware() gin.HandlerFunc {
 }
 
 func (a *App) InitGeoIP() {
-	db, err := geoip2.Open("GeoLite2-City.mmdb")
+	db, err := geoip2.Open("/opt/GeoLite2-City.mmdb")
 	if err != nil {
 		log.Fatal(err)
 	}
 	a.Geoip = db
 
-	asnDb, err := geoip2.Open("GeoLite2-ASN.mmdb")
+	asnDb, err := geoip2.Open("/opt/GeoLite2-ASN.mmdb")
 	if err != nil {
 		log.Fatal(err)
 	}
